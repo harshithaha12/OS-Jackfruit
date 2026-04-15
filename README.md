@@ -291,8 +291,6 @@ Include screenshots showing:
 4. Kernel module logs
    
 5. Clean shutdown
-      
-6. FIFO removed  
 
 ---
 
