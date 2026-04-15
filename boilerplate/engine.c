@@ -372,7 +372,11 @@ int child_fn(void *arg)
     return 1;
 }
 
-pid_t pid = fork();
+char *args[] = {cfg->command, NULL};
+execvp(args[0], args);
+
+perror("exec failed");
+return 1;
 
 if (pid == 0) {
     // child → actual command
