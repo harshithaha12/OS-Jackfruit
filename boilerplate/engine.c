@@ -338,7 +338,26 @@ void *logging_thread(void *arg)
  */
 int child_fn(void *arg)
 {
-    (void)arg;
+    child_config_t *cfg = (child_config_t *)arg;
+
+    printf("Container started: %s\n", cfg->id);
+
+    sethostname(cfg->id, strlen(cfg->id));
+
+    if (chroot(cfg->rootfs) != 0) {
+        perror("chroot");
+        return 1;
+    }
+
+    chdir("/");
+
+    mkdir("/proc", 0555);
+    mount("proc", "/proc", "proc", 0, NULL);
+
+    char *args[] = {cfg->command, NULL};
+    execvp(args[0], args);
+
+    perror("exec failed");
     return 1;
 }
 
@@ -419,12 +438,36 @@ static int run_supervisor(const char *rootfs)
      *   4) spawn the logger thread
      *   5) enter the supervisor event loop
      */
-    fprintf(stderr, "Supervisor mode not implemented yet for base-rootfs: %s\n", rootfs);
+      printf("Supervisor started with rootfs: %s\n", rootfs);
 
-    bounded_buffer_begin_shutdown(&ctx.log_buffer);
-    bounded_buffer_destroy(&ctx.log_buffer);
-    pthread_mutex_destroy(&ctx.metadata_lock);
+// create container config
+child_config_t cfg;
+memset(&cfg, 0, sizeof(cfg));
+
+strcpy(cfg.id, "alpha");
+strcpy(cfg.rootfs, rootfs);
+strcpy(cfg.command, "/bin/sh");
+
+// stack
+static char container_stack[STACK_SIZE];
+
+printf("Creating container...\n");
+
+pid_t pid = clone(child_fn,
+                  container_stack + STACK_SIZE,
+                  CLONE_NEWPID | CLONE_NEWUTS | CLONE_NEWNS | SIGCHLD,
+                  &cfg);
+
+if (pid < 0) {
+    perror("clone failed");
     return 1;
+}
+
+printf("Container PID: %d\n", pid);
+
+waitpid(pid, NULL, 0);
+
+return 0;
 }
 
 /*
