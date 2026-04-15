@@ -359,11 +359,42 @@ int child_fn(void *arg)
     mkdir("/proc", 0555);
     mount("proc", "/proc", "proc", 0, NULL);
 
+    int pipefd[2];
+pipe(pipefd);
+
+pid_t pid = fork();
+
+if (pid == 0) {
+    // child → actual command
+    close(pipefd[0]);
+
+    dup2(pipefd[1], STDOUT_FILENO);
+    dup2(pipefd[1], STDERR_FILENO);
+
+    close(pipefd[1]);
+
     char *args[] = {cfg->command, NULL};
     execvp(args[0], args);
 
     perror("exec failed");
-    return 1;
+    exit(1);
+} else {
+    // parent → logging
+    close(pipefd[1]);
+
+    char buffer[1024];
+    int n;
+
+    while ((n = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
+        write(STDOUT_FILENO, buffer, n);
+    }
+
+    close(pipefd[0]);
+    wait(NULL);
+}
+
+return 0;
+    
 }
 
 int register_with_monitor(int monitor_fd,
