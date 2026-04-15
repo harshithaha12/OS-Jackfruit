@@ -47,6 +47,7 @@
 #define LOG_BUFFER_CAPACITY 16
 #define DEFAULT_SOFT_LIMIT (40UL << 20)
 #define DEFAULT_HARD_LIMIT (64UL << 20)
+static char container_stack[STACK_SIZE];
 
 typedef enum {
     CMD_SUPERVISOR = 0,
@@ -342,14 +343,17 @@ int child_fn(void *arg)
 
     printf("Container started: %s\n", cfg->id);
 
-    sethostname(cfg->id, strlen(cfg->id));
 
     if (chroot(cfg->rootfs) != 0) {
         perror("chroot");
         return 1;
     }
 
-    chdir("/");
+    if (sethostname(cfg->id, strlen(cfg->id)) != 0)
+    perror("sethostname");
+
+    if (chdir("/") != 0)
+    perror("chdir");
 
     mkdir("/proc", 0555);
     mount("proc", "/proc", "proc", 0, NULL);
@@ -448,8 +452,6 @@ strcpy(cfg.id, "alpha");
 strcpy(cfg.rootfs, rootfs);
 strcpy(cfg.command, "/bin/sh");
 
-// stack
-static char container_stack[STACK_SIZE];
 
 printf("Creating container...\n");
 
