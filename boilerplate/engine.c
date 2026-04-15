@@ -378,6 +378,8 @@ execvp(args[0], args);
 perror("exec failed");
 return 1;
 
+pid_t pid = fork();
+    
 if (pid == 0) {
     // child → actual command
     close(pipefd[0]);
