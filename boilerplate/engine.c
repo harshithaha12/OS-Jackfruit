@@ -40,6 +40,7 @@
 #define STACK_SIZE (1024 * 1024)
 #define CONTAINER_ID_LEN 32
 #define CONTROL_PATH "/tmp/mini_runtime.sock"
+#define CONTROL_FIFO "/tmp/engine_fifo"
 #define LOG_DIR "logs"
 #define CONTROL_MESSAGE_LEN 256
 #define CHILD_COMMAND_LEN 256
@@ -434,6 +435,11 @@ static int run_supervisor(const char *rootfs)
         return 1;
     }
 
+    unlink(CONTROL_FIFO);
+if (mkfifo(CONTROL_FIFO, 0666) < 0) {
+    perror("mkfifo");
+}
+
     /*
      * TODO:
      *   1) open /dev/container_monitor
@@ -442,32 +448,49 @@ static int run_supervisor(const char *rootfs)
      *   4) spawn the logger thread
      *   5) enter the supervisor event loop
      */
-      printf("Supervisor started with rootfs: %s\n", rootfs);
 
-// create container config
-child_config_t cfg;
-memset(&cfg, 0, sizeof(cfg));
+    printf("Supervisor started with rootfs: %s\n", rootfs);
 
-strcpy(cfg.id, "alpha");
-strcpy(cfg.rootfs, rootfs);
-strcpy(cfg.command, "/bin/sh");
+unlink(CONTROL_FIFO);
+mkfifo(CONTROL_FIFO, 0666);
 
+while (1) {
+    control_request_t req;
 
-printf("Creating container...\n");
+    int fd = open(CONTROL_FIFO, O_RDONLY);
+    if (fd < 0) {
+        perror("open fifo");
+        continue;
+    }
 
-pid_t pid = clone(child_fn,
-                  container_stack + STACK_SIZE,
-                  CLONE_NEWPID | CLONE_NEWUTS | CLONE_NEWNS | SIGCHLD,
-                  &cfg);
+    if (read(fd, &req, sizeof(req)) <= 0) {
+        close(fd);
+        continue;
+    }
+    close(fd);
 
-if (pid < 0) {
-    perror("clone failed");
-    return 1;
+    printf("Received request: %s\n", req.container_id);
+
+    // prepare container config
+    child_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+
+    strcpy(cfg.id, req.container_id);
+    strcpy(cfg.rootfs, req.rootfs);
+    strcpy(cfg.command, req.command);
+
+    pid_t pid = clone(child_fn,
+                      container_stack + STACK_SIZE,
+                      CLONE_NEWPID | CLONE_NEWUTS | CLONE_NEWNS | SIGCHLD,
+                      &cfg);
+
+    if (pid < 0) {
+        perror("clone failed");
+        continue;
+    }
+
+    printf("Started container %s with PID %d\n", cfg.id, pid);
 }
-
-printf("Container PID: %d\n", pid);
-
-waitpid(pid, NULL, 0);
 
 return 0;
 }
@@ -482,9 +505,17 @@ return 0;
  */
 static int send_control_request(const control_request_t *req)
 {
-    (void)req;
-    fprintf(stderr, "Control-plane client path not implemented.\n");
-    return 1;
+    int fd = open(CONTROL_FIFO, O_WRONLY);
+    if (fd < 0) {
+        perror("open fifo");
+        return 1;
+    }
+
+    write(fd, req, sizeof(*req));
+    close(fd);
+
+    printf("Request sent to supervisor\n");
+    return 0;
 }
 
 static int cmd_start(int argc, char *argv[])
