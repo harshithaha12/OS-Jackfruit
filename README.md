@@ -25,6 +25,19 @@ This project implements a mini container runtime system similar to Docker with:
 
 ---
 
+## System Architecture
+
+The system consists of the following components:
+
+- **CLI Interface**: Accepts user commands (`run`, `start`)  
+- **Supervisor Process**: Central controller managing containers  
+- **FIFO (IPC)**: Communication channel between CLI and supervisor  
+- **Container Runtime**: Uses clone() to create isolated containers  
+- **Logging System**: Captures container output using pipes  
+- **Kernel Module**: Monitors system activity using Linux kernel APIs  
+
+### Flow:
+CLI → FIFO → Supervisor → Container Creation → Logging → Monitoring
 
 # Multi-Container Runtime
 
