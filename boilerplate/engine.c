@@ -34,6 +34,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "monitor_ioctl.h"
 
@@ -129,6 +130,12 @@ typedef struct {
     pthread_mutex_t metadata_lock;
     container_record_t *containers;
 } supervisor_ctx_t;
+
+void handle_sigint(int sig) {
+    printf("\nShutting down supervisor...\n");
+    unlink(CONTROL_FIFO);
+    exit(0);
+}
 
 static void usage(const char *prog)
 {
@@ -360,7 +367,10 @@ int child_fn(void *arg)
     mount("proc", "/proc", "proc", 0, NULL);
 
     int pipefd[2];
-pipe(pipefd);
+    if (pipe(pipefd) < 0) {
+    perror("pipe");
+    return 1;
+}
 
 pid_t pid = fork();
 
@@ -390,7 +400,7 @@ if (pid == 0) {
     }
 
     close(pipefd[0]);
-    wait(NULL);
+    waitpid(pid, NULL, 0);
 }
 
 return 0;
@@ -450,6 +460,16 @@ static int run_supervisor(const char *rootfs)
     memset(&ctx, 0, sizeof(ctx));
     ctx.server_fd = -1;
     ctx.monitor_fd = -1;
+
+     signal(SIGINT, handle_sigint);
+
+    printf("Supervisor started with rootfs: %s\n", rootfs);
+
+    unlink(CONTROL_FIFO);
+    if (mkfifo(CONTROL_FIFO, 0666) < 0) {
+        perror("mkfifo");
+    }
+    chmod(CONTROL_FIFO, 0666);
 
     rc = pthread_mutex_init(&ctx.metadata_lock, NULL);
     if (rc != 0) {
